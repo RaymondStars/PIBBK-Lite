@@ -154,6 +154,19 @@ body {
     }
 }
 
+.area-webviews {
+    width: 100%;
+    height: 100%;
+    flex-wrap: nowrap;
+
+    .webview {
+        flex: 1 1 0;
+        min-width: 0;
+        width: 0;
+        height: 100%;
+    }
+}
+
 #translator-bar {
     width: 100%;
 }
@@ -223,4 +236,3 @@ body {
         top: $menubar-height;
     }
 }
-

@@ -16,6 +16,7 @@ mix
     .sass('assets/styles/app.scss', 'build/assets/styles/')
     .ts('src/ui/app.ts', 'build/')
     .copy('assets/static/index.html', 'build/')
+    .copy('assets/static/translator-output.html', 'build/')
     .copyDirectory('assets/translations', 'build/assets/translations')
     .copyDirectory('assets/logo', 'build/logo')
     .webpackConfig({

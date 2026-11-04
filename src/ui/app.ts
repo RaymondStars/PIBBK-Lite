@@ -225,6 +225,17 @@ new Vue({
                 Array.from(webviews).forEach(webview => {
                     webview.addEventListener('dom-ready', function(event) {
                         injectCSS(webview);
+                        if (webview.classList.contains('webview-bing')) {
+                            (<WebviewTag>webview).insertCSS(`
+                                body { min-width: 0 !important; overflow-x: hidden !important; }
+                            `);
+                        }
+                        if (webview.classList.contains('webview-caiyun')) {
+                            (<WebviewTag>webview).insertCSS(`
+                                body { min-width: 0 !important; overflow-x: hidden !important; }
+                                #textarea, textarea { width: 100% !important; max-width: none !important; }
+                            `);
+                        }
                         if (webview.classList.contains('webview-fts')) {
                             let webcontents = (<WebviewTag>webview).getWebContents();
                             webcontents.on('new-window', (event, url) => {
@@ -352,9 +363,9 @@ new Vue({
                 (<WebviewTag>webview).loadURL('https://translate.google.com/?sl=ja&tl=zh-TW&text=' + encodeURIComponent(string));
             }
 
-            webview = document.querySelector('.webview-baidu') as WebviewTag;
+            webview = document.querySelector('.webview-bing') as WebviewTag;
             if (webview) {
-                _this._webviewTranslationInjectJs(webview, '#baidu_translate_input,#baidu_translate_input_new,textarea', string);
+                _this._webviewTranslationInjectJs(webview, '#tta_input_ta,textarea[name="text"],textarea[aria-label],textarea', string);
             }
 
             webview = document.querySelector('.webview-caiyun') as WebviewTag;
@@ -362,14 +373,14 @@ new Vue({
                 _this._webviewTranslationInjectJs(webview, '#textarea', string);
             }
 
-            webview = document.querySelector('.webview-youdao') as WebviewTag;
+            webview = document.querySelector('.webview-papago') as WebviewTag;
             if (webview) {
-                _this._webviewTranslationInjectJs(webview, '#inputOriginal,#js_fanyi_input,.inputOriginal textarea,textarea', string);
+                _this._translateThroughApi(webview, 'google', string);
             }
 
-            webview = document.querySelector('.webview-deepl') as WebviewTag;
+            webview = document.querySelector('.webview-yandex') as WebviewTag;
             if (webview) {
-                _this._webviewTranslationInjectJs(webview, '[data-testid="translator-source-input"],[data-testid="translator-source-input-editor"] textarea,[data-lexical-editor="true"],.lmt__source_textarea textarea,textarea[aria-label*="源文字"],textarea', string);
+                _this._translateThroughApi(webview, 'mymemory', string);
             }
 
             // webview = document.querySelector('.webview-fts') as WebviewTag;
@@ -534,29 +545,84 @@ new Vue({
                 source.style.marginTop = (caret.top - paragraph.offsetTop) + 'px';
             }
         },
+        async _translateThroughApi(webview: WebviewTag, provider: string, source: string) {
+            try {
+                const translated = await ipcRenderer.invoke('translate-text', provider, source);
+                await webview.executeJavaScript(`
+                    document.getElementById('translation-output').textContent =
+                        ${JSON.stringify(translated)};
+                `);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                await webview.executeJavaScript(`
+                    document.getElementById('translation-output').textContent =
+                        '翻譯失敗：' + ${JSON.stringify(message)};
+                `);
+            }
+        },
         _webviewTranslationInjectJs(webview: WebviewTag, element: string, string: string) {
             webview.executeJavaScript(`
                     (() => {
                         const selectors = '${element}'.split(',');
-                        let input = null;
-                        for (const selector of selectors) {
-                            input = document.querySelector(selector);
-                            if (input) break;
+                        const setValue = () => {
+                            let input = null;
+                            for (const selector of selectors) {
+                                const candidates = Array.from(document.querySelectorAll(selector.trim()));
+                                input = candidates.find(candidate => {
+                                    const style = window.getComputedStyle(candidate);
+                                    return style.display !== 'none'
+                                        && style.visibility !== 'hidden'
+                                        && candidate.getAttribute('aria-hidden') !== 'true';
+                                }) || candidates[0] || null;
+                                if (input) break;
+                            }
+                            if (!input) return false;
+                            input.focus();
+                            input.scrollIntoView({ block: 'center', inline: 'center' });
+                            let ancestor = input.parentElement;
+                            for (let depth = 0; depth < 4 && ancestor; depth++) {
+                                if (ancestor.scrollWidth > ancestor.clientWidth) {
+                                    ancestor.scrollLeft = 0;
+                                }
+                                ancestor = ancestor.parentElement;
+                            }
+                            if (input.isContentEditable || input.getAttribute('contenteditable') === 'true') {
+                                input.focus();
+                                document.execCommand('selectAll', false, null);
+                                document.execCommand('insertText', false, ${JSON.stringify(string)});
+                                if (input.textContent !== ${JSON.stringify(string)}) {
+                                    input.textContent = ${JSON.stringify(string)};
+                                }
+                            }
+                            else {
+                                const prototype = input.tagName === 'TEXTAREA'
+                                    ? HTMLTextAreaElement.prototype
+                                    : HTMLInputElement.prototype;
+                                const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+                                if (descriptor && descriptor.set) {
+                                    descriptor.set.call(input, ${JSON.stringify(string)});
+                                }
+                                else {
+                                    input.value = ${JSON.stringify(string)};
+                                }
+                            }
+                            input.dispatchEvent(new Event('focus', { bubbles: true }));
+                            input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Process' }));
+                            input.dispatchEvent(new InputEvent('input', {
+                                bubbles: true,
+                                inputType: 'insertText',
+                                data: ${JSON.stringify(string)}
+                            }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                            return true;
                         }
-                        if (!input) return false;
-                        if (input.isContentEditable || input.getAttribute('contenteditable') === 'true') {
-                            input.textContent = ${JSON.stringify(string)};
-                        }
-                        else {
-                            const valueSetter = Object.getOwnPropertyDescriptor(
-                                input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
-                                'value'
-                            ).set;
-                            valueSetter.call(input, ${JSON.stringify(string)});
-                        }
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                        return true;
+                        if (setValue()) return true;
+                        let attempts = 0;
+                        const timer = window.setInterval(() => {
+                            attempts++;
+                            if (setValue() || attempts >= 40) window.clearInterval(timer);
+                        }, 250);
+                        return false;
                     })()`);
         },
         /* ------------------

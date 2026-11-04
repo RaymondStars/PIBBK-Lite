@@ -114,6 +114,59 @@ function downloadHtml(url: string, redirects: number = 0): Promise<string> {
 
 ipcMain.handle('download-html', async (event, url: string) => downloadHtml(url));
 
+function requestHttps(url: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        const request = https.get(url, response => {
+            const status = response.statusCode || 0;
+            if (status < 200 || status >= 300) {
+                response.resume();
+                reject(new Error(`伺服器回應 HTTP ${status}`));
+                return;
+            }
+            const chunks: string[] = [];
+            response.setEncoding('utf8');
+            response.on('data', chunk => chunks.push(String(chunk)));
+            response.on('end', () => resolve(chunks.join('')));
+            response.on('error', reject);
+        });
+        request.setTimeout(30000, () => request.destroy(new Error('翻譯服務逾時')));
+        request.on('error', reject);
+    });
+}
+
+ipcMain.handle('translate-text', async (event, provider: string, text: string) => {
+    if (!text || !text.trim()) {
+        return '';
+    }
+
+    if (provider === 'google') {
+        const endpoint = 'https://translate.googleapis.com/translate_a/single'
+            + '?client=gtx&sl=ja&tl=zh-CN&dt=t&q=' + encodeURIComponent(text);
+        const json = JSON.parse(await requestHttps(endpoint));
+        return json[0].map(segment => segment[0]).join('');
+    }
+
+    const endpoint = 'https://api.mymemory.translated.net/get'
+        + '?langpair=ja%7Czh-CN&q=' + encodeURIComponent(text);
+    const json = JSON.parse(await requestHttps(endpoint));
+    if (!json.responseData || !json.responseData.translatedText) {
+        throw new Error(json.responseDetails || 'MyMemory 未回傳翻譯結果');
+    }
+    if (Array.isArray(json.matches) && json.matches.length) {
+        const usable = json.matches
+            .filter(match => match.translatedText && match.segment === text)
+            .sort((a, b) => {
+                const scoreA = Number(a.quality || 0) + Number(a.match || 0) * 5;
+                const scoreB = Number(b.quality || 0) + Number(b.match || 0) * 5;
+                return scoreB - scoreA;
+            });
+        if (usable.length) {
+            return usable[0].translatedText;
+        }
+    }
+    return json.responseData.translatedText;
+});
+
 function createWindow() {
     const minWidth = 960;
     const minHeight = 660;

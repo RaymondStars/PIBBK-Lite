@@ -2,5 +2,6 @@
     "/build/app.js": "/build/app.js",
     "/build/main.js": "/build/main.js",
     "/build/assets/styles/app.css": "/build/assets/styles/app.css",
-    "/build/index.html": "/build/index.html"
+    "/build/index.html": "/build/index.html",
+    "/build/translator-output.html": "/build/translator-output.html"
 }

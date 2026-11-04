@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #fff;
+            font-family: "Microsoft JhengHei", sans-serif;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        .output {
+            box-sizing: border-box;
+            flex: 1;
+            height: 0;
+            padding: 12px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #222;
+            font-size: 16px;
+            line-height: 1.7;
+        }
+        .provider {
+            margin-bottom: 8px;
+            padding: 12px 12px 0;
+            color: #777;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="provider" id="provider"></div>
+    <div class="output" id="translation-output"></div>
+    <script>
+        document.getElementById('provider').textContent =
+            location.hash === '#mymemory' ? 'MyMemory' : 'Google Translate API';
+    </script>
+</body>
+</html>
