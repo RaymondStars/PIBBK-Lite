@@ -32,11 +32,30 @@ export class KakuyomuParser extends Parser {
             decodeEntities: false
         });
         let content = '';
-		let i = 1;
-		while ($('#p'+i.toString()).length > 0){
-			 content += $('#p'+i.toString()).text() + '\n';
-			 i += 1;
-		}
+        $('.widget-episodeBody .widget-episodeBody__content p, .widget-episodeBody p, .js-episode-body p, [class*="episodeBody"] p').each(function(this: CheerioElement) {
+            const text = $(this).text();
+            if (text) {
+                content += text + '\n';
+            }
+        });
+        if (!content) {
+            $('.js-episode-body, .widget-episodeBody').each(function(this: CheerioElement) {
+                let html = $(this).html() || '';
+                html = html.replace(/<br\s*\/?>/gi, '\n');
+                const text = $('<div>').html(html).text();
+                if (text.trim()) {
+                    content = text.replace(/([^\n])\n([^\n])/g, '$1\n$2') + '\n';
+                }
+            });
+        }
+        if (!content) {
+            $('[id^="p"]').each(function(this: CheerioElement) {
+                const text = $(this).text();
+                if (text) {
+                    content += text + '\n';
+                }
+            });
+        }
 
         let re = new RegExp('^　', 'g');
         content = content.replace(re, '');

@@ -286,8 +286,7 @@ new Vue({
             global event
         ------------------ */
         async eventFetchButtonClick() {
-
-            let url = (<HTMLInputElement>document.getElementById('url')).value;
+            let url = (<HTMLInputElement>document.getElementById('url')).value.trim();
             if (url.length <= 0) {
                 return;
             }
@@ -305,18 +304,28 @@ new Vue({
             }
 
             if (!parser) {
+                notification('僅支援小說家、pixiv 與 kakuyomu 的網址');
                 return;
             }
 
-            let html = await parser.downloadHtml(url);
-            let novelName = parser.parseNovelName(html);
-            let chapterTitle = parser.parseChapterTitle(html);
-            let content = parser.parseContent(html);
+            try {
+                let html = await parser.downloadHtml(url);
+                let novelName = parser.parseNovelName(html);
+                let chapterTitle = parser.parseChapterTitle(html);
+                let content = parser.parseContent(html);
 
-            this.info.novelName.source = novelName;
-            this.info.chapterTitle.source = chapterTitle;
-            this.info.sourceUrl = url;
-            this.working.source = content;
+                if (!content || content.trim().length === 0) {
+                    throw new Error('找不到章節本文，網站版面可能已更新');
+                }
+
+                this.info.novelName.source = novelName || '';
+                this.info.chapterTitle.source = chapterTitle || '';
+                this.info.sourceUrl = url;
+                this.working.source = content;
+            } catch (error) {
+                notification(`擷取原文失敗：${error instanceof Error ? error.message : String(error)}`);
+                console.error(error);
+            }
         },
         eventOpenInfoButtonClick() {
             document.getElementById('modal-info').style.display = 'block';
@@ -338,17 +347,14 @@ new Vue({
         },
         eventTranslateThis(string) {
             let _this = (this as any);
-            string = encodeURIComponent(string);
             let webview = document.querySelector('.webview-google') as WebviewTag;
             if (webview) {
-                // _this._webviewTranslationInjectJs(webview, '#source', string);
-                (<WebviewTag>webview).loadURL('https://translate.google.com.tw/?sl=auto&tl=zh-TW&op=translate&text=' + string);
+                (<WebviewTag>webview).loadURL('https://translate.google.com/?sl=ja&tl=zh-TW&text=' + encodeURIComponent(string));
             }
 
             webview = document.querySelector('.webview-baidu') as WebviewTag;
             if (webview) {
-                _this._webviewTranslationInjectJs(webview, '#baidu_translate_input', string);
-                // (<WebviewTag>webview).loadURL('https://fanyi.baidu.com/#jp/zh/' + string);
+                _this._webviewTranslationInjectJs(webview, '#baidu_translate_input,#baidu_translate_input_new,textarea', string);
             }
 
             webview = document.querySelector('.webview-caiyun') as WebviewTag;
@@ -358,12 +364,12 @@ new Vue({
 
             webview = document.querySelector('.webview-youdao') as WebviewTag;
             if (webview) {
-                _this._webviewTranslationInjectJs(webview, '#inputOriginal', string);
+                _this._webviewTranslationInjectJs(webview, '#inputOriginal,#js_fanyi_input,.inputOriginal textarea,textarea', string);
             }
 
             webview = document.querySelector('.webview-deepl') as WebviewTag;
             if (webview) {
-                _this._webviewTranslationInjectJs(webview, '.lmt__source_textarea', string);
+                _this._webviewTranslationInjectJs(webview, '[data-testid="translator-source-input"],[data-testid="translator-source-input-editor"] textarea,[data-lexical-editor="true"],.lmt__source_textarea textarea,textarea[aria-label*="源文字"],textarea', string);
             }
 
             // webview = document.querySelector('.webview-fts') as WebviewTag;
@@ -530,10 +536,28 @@ new Vue({
         },
         _webviewTranslationInjectJs(webview: WebviewTag, element: string, string: string) {
             webview.executeJavaScript(`
-                    document.querySelector('${element}').value = decodeURI('${string}');
-                    e = document.createEvent('HTMLEvents');
-                    e.initEvent('input', false, true);
-                    document.querySelector('${element}').dispatchEvent(e);`);
+                    (() => {
+                        const selectors = '${element}'.split(',');
+                        let input = null;
+                        for (const selector of selectors) {
+                            input = document.querySelector(selector);
+                            if (input) break;
+                        }
+                        if (!input) return false;
+                        if (input.isContentEditable || input.getAttribute('contenteditable') === 'true') {
+                            input.textContent = ${JSON.stringify(string)};
+                        }
+                        else {
+                            const valueSetter = Object.getOwnPropertyDescriptor(
+                                input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+                                'value'
+                            ).set;
+                            valueSetter.call(input, ${JSON.stringify(string)});
+                        }
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                        return true;
+                    })()`);
         },
         /* ------------------
             text

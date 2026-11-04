@@ -3,6 +3,8 @@ import * as windowStateKeeper from 'electron-window-state'
 import { isLinux, isMacintosh, isWindows } from '../common/platform';
 import * as url from 'url';
 import * as path from 'path';
+import * as http from 'http';
+import * as https from 'https';
 
 let i18n = new(require('../ui/i18n'));
 let mainWindow: Electron.BrowserWindow | null = null
@@ -68,6 +70,49 @@ ipcMain.on('render-inited', (event, arg) => {
         mainWindow!.webContents.send('file-open', initOpenFileQueue.pop());
     }
 });
+
+function downloadHtml(url: string, redirects: number = 0): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const client = parsedUrl.protocol === 'http:' ? http : https;
+        const headers = {
+            Accept: 'text/html,application/xhtml+xml',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+        } as http.OutgoingHttpHeaders;
+        if (parsedUrl.hostname.indexOf('novel18.syosetu.com') >= 0) {
+            headers.Cookie = 'over18=yes';
+        }
+
+        const request = client.get(parsedUrl, { headers: headers }, response => {
+            const status = response.statusCode || 0;
+            if (status >= 300 && status < 400 && response.headers.location) {
+                response.resume();
+                if (redirects >= 5) {
+                    reject(new Error('重新導向次數過多'));
+                    return;
+                }
+                downloadHtml(new URL(response.headers.location, parsedUrl).toString(), redirects + 1)
+                    .then(resolve, reject);
+                return;
+            }
+            if (status < 200 || status >= 300) {
+                response.resume();
+                reject(new Error(`伺服器回應 HTTP ${status}`));
+                return;
+            }
+
+            const chunks: string[] = [];
+            response.setEncoding('utf8');
+            response.on('data', chunk => chunks.push(String(chunk)));
+            response.on('end', () => resolve(chunks.join('')));
+            response.on('error', reject);
+        });
+        request.setTimeout(30000, () => request.destroy(new Error('下載網站逾時')));
+        request.on('error', reject);
+    });
+}
+
+ipcMain.handle('download-html', async (event, url: string) => downloadHtml(url));
 
 function createWindow() {
     const minWidth = 960;

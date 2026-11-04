@@ -1,4 +1,5 @@
 import { Parser } from './Parser';
+import * as cheerio from 'cheerio';
 
 export class PixivParser extends Parser {
 
@@ -17,6 +18,11 @@ export class PixivParser extends Parser {
     }
 
     public parseChapterTitle(html: string):string {
+        const $ = cheerio.load(html, { decodeEntities: true });
+        const metaTitle = $('meta[property="twitter:title"]').attr('content');
+        if (metaTitle) {
+            return metaTitle;
+        }
         // <meta property="twitter:title" content="現国《蒼海疾駆の章》第二十二話『近接戦闘』">
         let pattern = /<meta property="twitter:title" content="(.*?)">/gsm;
         let match = pattern.exec(html);
@@ -30,18 +36,38 @@ export class PixivParser extends Parser {
     }
 
     public parseContent(html: string):string {
-        let pattern = /<meta name="preload-data" id="meta-preload-data" content='(.*?)'/gsm;
-        let match = pattern.exec(html);
-        let json, chapterId;
-        if (match && 1 in match) {
-            json = JSON.parse(match[1]);
+        const $ = cheerio.load(html, { decodeEntities: true });
+        const preload = $('#meta-preload-data').attr('content')
+            || $('meta[name="preload-data"]').attr('content');
+        let json;
+        if (preload) {
+            json = JSON.parse(preload);
+        } else {
+            return '';
         }
+        let chapterId = '';
+        let pattern;
+        let match;
         pattern = /<link rel="canonical" href="https:\/\/www.pixiv.net\/novel\/show.php\?id=(.*?)">/gsm;
         match = pattern.exec(html);
         if (match && 1 in match) {
             chapterId = match[1];
         }
 
-        return json.novel[chapterId].content;
+        if (!chapterId) {
+            pattern = /(?:show.php\?id=|\/novel\/)(\d+)/g;
+            match = pattern.exec(html);
+            if (match && 1 in match) {
+                chapterId = match[1];
+            }
+        }
+        if (!chapterId && json.novel) {
+            chapterId = Object.keys(json.novel)[0];
+        }
+
+        if (!json.novel || !json.novel[chapterId]) {
+            return '';
+        }
+        return json.novel[chapterId].content || '';
     }
 }
